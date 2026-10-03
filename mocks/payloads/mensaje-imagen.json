@@ -1,0 +1,40 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WABA_ID",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "5215555555555",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "Juan Pérez" },
+                "wa_id": "5215512345678"
+              }
+            ],
+            "messages": [
+              {
+                "from": "5215512345678",
+                "id": "wamid.IMAGEN001",
+                "timestamp": "1727741000",
+                "type": "image",
+                "image": {
+                  "id": "MEDIA_ID_123",
+                  "mime_type": "image/jpeg",
+                  "sha256": "abc123==",
+                  "caption": "Comprobante de transferencia"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
