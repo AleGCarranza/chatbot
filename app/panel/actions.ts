@@ -12,11 +12,42 @@ import { requireStaff, requireAdmin } from "@/lib/auth";
 import { puedeImprimirAhora } from "@/lib/rules/antimerma";
 import { urlFirmadaAdjunto } from "@/lib/whatsapp/media";
 import { overrideDesdeFlag } from "@/lib/rules/horario";
+import { enviarMensajeTexto } from "@/lib/whatsapp/sender";
 import { FLAG_MODULO_TRAMITES, FLAG_FUERA_DE_HORARIO } from "@/lib/types";
 
 export interface ResultadoAccion {
   ok: boolean;
   mensaje?: string;
+}
+
+/**
+ * Obtiene el teléfono del cliente dueño de un ticket (para notificarle).
+ * Devuelve null si no se encuentra.
+ */
+async function telefonoDelTicket(ticketId: string): Promise<string | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("tickets_atencion")
+    .select("clientes(telefono)")
+    .eq("id", ticketId)
+    .maybeSingle();
+  // La relación puede venir como objeto o arreglo según el join.
+  const rel = (data as { clientes?: { telefono?: string } | { telefono?: string }[] } | null)
+    ?.clientes;
+  const tel = Array.isArray(rel) ? rel[0]?.telefono : rel?.telefono;
+  return tel ?? null;
+}
+
+/** Notifica al cliente del ticket por WhatsApp (mock en local). */
+async function notificarCliente(ticketId: string, texto: string): Promise<void> {
+  const tel = await telefonoDelTicket(ticketId);
+  if (tel) {
+    try {
+      await enviarMensajeTexto(tel, texto);
+    } catch (e) {
+      console.error("[panel] No se pudo notificar al cliente:", e);
+    }
+  }
 }
 
 /**
@@ -93,6 +124,51 @@ export async function confirmarPago(
 }
 
 /**
+ * El empleado confirma el TOTAL a pagar de un ticket de impresión con pago
+ * previo. Guarda el total en detalles_json y notifica al cliente para que
+ * envíe su comprobante (CoDi/transferencia). No cambia el estado.
+ */
+export async function confirmarTotal(
+  ticketId: string,
+  total: number
+): Promise<ResultadoAccion> {
+  await requireStaff();
+  if (!(total > 0)) {
+    return { ok: false, mensaje: "El total debe ser mayor a 0." };
+  }
+  const supabase = await createSupabaseServerClient();
+
+  // Lee los detalles actuales para no perder lo ya capturado.
+  const { data: actual } = await supabase
+    .from("tickets_atencion")
+    .select("detalles_json")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  const detalles = {
+    ...((actual?.detalles_json as Record<string, unknown>) ?? {}),
+    total,
+  };
+
+  const { error } = await supabase
+    .from("tickets_atencion")
+    .update({ detalles_json: detalles })
+    .eq("id", ticketId);
+
+  if (error) return { ok: false, mensaje: error.message };
+
+  await notificarCliente(
+    ticketId,
+    `El total de tu impresión es $${total.toFixed(2)} MXN. ` +
+      "Realiza tu pago por CoDi/transferencia y envía aquí tu comprobante " +
+      "para procesar la impresión."
+  );
+
+  revalidatePath("/panel");
+  return { ok: true };
+}
+
+/**
  * Envía a impresión (en_proceso). Aplica el invariante anti-merma:
  * - pagado_imprimir requiere pago_confirmado.
  * - pendiente_presencial permite (el cobro ocurre en caja al imprimir).
@@ -123,6 +199,14 @@ export async function imprimirTicket(
     .from("tickets_atencion")
     .update({ estado: "en_proceso" })
     .eq("id", ticketId);
+
+  if (!error) {
+    await notificarCliente(
+      ticketId,
+      "✅ ¡Tu pago fue validado! Tus impresiones ya están en proceso y listas " +
+        "para recoger en el mostrador. Gracias por tu preferencia."
+    );
+  }
 
   revalidatePath("/panel");
   return error ? { ok: false, mensaje: error.message } : { ok: true };

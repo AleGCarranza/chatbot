@@ -13,6 +13,7 @@ import {
   tomarTicket,
   liberarTicket,
   confirmarPago,
+  confirmarTotal,
   imprimirTicket,
   pausarTicket,
   completarTicket,
@@ -28,6 +29,7 @@ interface Props {
 export function TarjetaTicket({ ticket, terminal }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [montoTotal, setMontoTotal] = useState("");
 
   const acciones = accionesPermitidas(
     ticket.estado,
@@ -36,6 +38,24 @@ export function TarjetaTicket({ ticket, terminal }: Props) {
   const tomado = estaTomado(ticket);
   const esMiTerminal = ticket.atendido_por_terminal === terminal;
   const operable = !tomado || esMiTerminal;
+
+  // Total ya confirmado por un empleado (si existe en detalles_json).
+  const detalles =
+    ticket.detalles_json && typeof ticket.detalles_json === "object" && !Array.isArray(ticket.detalles_json)
+      ? (ticket.detalles_json as Record<string, unknown>)
+      : {};
+  const totalConfirmado =
+    typeof detalles.total === "number" ? detalles.total : null;
+
+  // Mostrar el campo de "confirmar total" en impresiones con pago previo
+  // que están en validación de pago y aún no tienen total asignado.
+  const esImpresion =
+    ticket.tipo_flujo === "impresion_estandar" ||
+    ticket.tipo_flujo === "impresion_express";
+  const requiereTotal =
+    esImpresion &&
+    ticket.estado === "pendiente_validacion_pago" &&
+    totalConfirmado === null;
 
   function ejecutar(fn: () => Promise<{ ok: boolean; mensaje?: string }>) {
     setError(null);
@@ -75,10 +95,44 @@ export function TarjetaTicket({ ticket, terminal }: Props) {
         </p>
       ) : null}
 
+      {totalConfirmado !== null ? (
+        <p className="mt-1 text-xs text-gray-600">
+          Total confirmado: ${totalConfirmado.toFixed(2)} MXN
+        </p>
+      ) : null}
+
       {error ? (
         <p role="alert" className="mt-2 text-xs text-red-600">
           {error}
         </p>
+      ) : null}
+
+      {operable && requiereTotal ? (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Total $"
+            value={montoTotal}
+            onChange={(e) => setMontoTotal(e.target.value)}
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+          />
+          <button
+            disabled={pending}
+            onClick={() => {
+              const n = Number(montoTotal);
+              if (!(n > 0)) {
+                setError("Ingresa un total válido.");
+                return;
+              }
+              ejecutar(() => confirmarTotal(ticket.id, n));
+            }}
+            className="rounded bg-indigo-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+          >
+            Confirmar total
+          </button>
+        </div>
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -92,7 +146,7 @@ export function TarjetaTicket({ ticket, terminal }: Props) {
           </button>
         ) : null}
 
-        {operable && acciones.puedeConfirmarPago ? (
+        {operable && acciones.puedeConfirmarPago && totalConfirmado !== null ? (
           <button
             disabled={pending}
             onClick={() => ejecutar(() => confirmarPago(ticket.id))}

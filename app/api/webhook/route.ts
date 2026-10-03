@@ -148,6 +148,16 @@ export async function POST(request: NextRequest) {
       fueraDeHorario,
     });
 
+    // En modo mock (desarrollo local) devolvemos también la respuesta del
+    // bot para poder probar la conversación desde un cliente de terminal.
+    // WhatsApp real ignora el cuerpo de la respuesta, así que es inofensivo.
+    if (process.env.WHATSAPP_MOCK === "true") {
+      return NextResponse.json(
+        { received: true, reply: respuestaFinal, folio },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (error) {
     // Nunca propagamos errores a WhatsApp: registramos y devolvemos 200.

@@ -106,8 +106,9 @@ export function pasoPagoImpresion(
   const esPrevio = metodo === "codi" || metodo === "transferencia";
 
   const respuesta = esPrevio
-    ? "Listo ✅. Registramos tu impresión. Envía tu comprobante de pago " +
-      "(CoDi/transferencia) y un empleado lo validará para mandar a imprimir."
+    ? "Listo ✅. Registramos tu impresión. Un empleado revisará tu trabajo y " +
+      "te confirmará el total a pagar por este medio. En cuanto lo recibas, " +
+      "envía tu comprobante de pago (CoDi/transferencia) para procesar la impresión."
     : "Listo ✅. Registramos tu impresión. El pago se realiza en caja: " +
       "tu trabajo se imprimirá cuando estés presente en el mostrador.";
 
